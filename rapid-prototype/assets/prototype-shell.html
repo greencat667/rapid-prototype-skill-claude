@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prototype</title>
+<!--
+  RAPID PROTOTYPE SHELL
+  - Each screen is <section data-screen="name" data-title="Title">. The first one is the start screen.
+  - data-go="name"        navigate to a screen
+  - data-back             go back one screen
+  - data-todo="Label"     show a "not in this prototype" toast (and log it)
+  - data-action="name"    run ACTIONS.name(el, event) — define your own below
+  - data-bind="key"       on inputs/selects: stores the value in state[key]
+  - data-show="key"       on any element: fills it with state[key]
+  Facilitator panel: press "?" or open with #facilitator, or tap the banner 3 times.
+  Nothing is stored or sent anywhere. Refreshing the page resets everything.
+-->
+<style>
+  :root {
+    --bg: #eef0f4; --surface: #ffffff; --surface-2: #f5f6f9; --ink: #1c2230; --muted: #5d6677;
+    --line: #dde1e8; --accent: #2f8f83; --accent-ink: #ffffff; --accent-soft: #e2f2ef;
+    --warn: #b8541f; --warn-soft: #fbe9df; --radius: 14px;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1218; --surface: #1a1f28; --surface-2: #222835; --ink: #e9ecf2; --muted: #a3abba;
+      --line: #323a48; --accent: #5cc2b4; --accent-ink: #0f1218; --accent-soft: #1b3834;
+      --warn: #ef935f; --warn-soft: #3a2519;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1218; --surface: #1a1f28; --surface-2: #222835; --ink: #e9ecf2; --muted: #a3abba;
+    --line: #323a48; --accent: #5cc2b4; --accent-ink: #0f1218; --accent-soft: #1b3834;
+    --warn: #ef935f; --warn-soft: #3a2519;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+
+  /* Phone frame on desktop, full screen on mobile */
+  .stage { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  .device { width: 390px; max-width: 100%; height: min(844px, calc(100vh - 48px)); background: var(--surface);
+    border-radius: 36px; box-shadow: 0 20px 60px rgba(0,0,0,.18), 0 0 0 10px #111, 0 0 0 11px #333;
+    overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  @media (max-width: 500px) {
+    .stage { padding: 0; align-items: stretch; }
+    .device { width: 100%; height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
+  }
+
+  .proto-banner { background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 600;
+    text-align: center; padding: 6px 12px; letter-spacing: .02em; user-select: none; }
+  .proto-banner[hidden] { display: none; }
+  .appbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); min-height: 56px; }
+  .appbar h1 { font-size: 17px; margin: 0; flex: 1; text-align: center; }
+  .appbar .icon-btn { width: 44px; height: 44px; border: 0; background: none; color: var(--ink); font-size: 22px; border-radius: 10px; cursor: pointer; }
+  .appbar .icon-btn:disabled { visibility: hidden; }
+  #screens { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  section[data-screen] { display: none; padding: 20px 18px 32px; animation: fade .18s ease; }
+  section[data-screen].active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* Components */
+  h2 { font-size: 24px; line-height: 1.25; margin: 4px 0 8px; }
+  h3 { font-size: 17px; margin: 20px 0 8px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  .btn { display: block; width: 100%; min-height: 50px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink);
+    font: 600 17px var(--font); cursor: pointer; margin: 10px 0; padding: 12px 16px; text-align: center; text-decoration: none; }
+  .btn.secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+  .btn.link { background: none; color: var(--accent); min-height: 44px; }
+  .btn:focus-visible, .card:focus-visible, .option:focus-visible, .icon-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .card { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 10px 0; cursor: pointer; font: inherit; }
+  .card .thumb { width: 56px; height: 56px; border-radius: 10px; background: var(--accent-soft); display: grid; place-items: center; font-size: 28px; flex: none; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .title { font-weight: 600; }
+  .card[aria-disabled="true"] { opacity: .55; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .options { display: grid; gap: 10px; margin: 12px 0; }
+  .option { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer; background: var(--surface); }
+  .option input { margin-top: 4px; width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+  .option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  label.field { display: block; font-weight: 600; margin: 14px 0 6px; }
+  input[type=text], input[type=email], input[type=tel], select, textarea { width: 100%; min-height: 48px; padding: 10px 12px; font: 16px var(--font);
+    color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 10px; }
+  .summary { background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
+  .summary .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+  .summary .row.total { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 10px; font-weight: 700; }
+  .notice { background: var(--warn-soft); color: var(--ink); border-radius: 12px; padding: 12px 14px; font-size: 14px; margin: 12px 0; }
+  .hero-emoji { font-size: 56px; text-align: center; margin: 12px 0; }
+
+  /* Toast */
+  #toast { position: absolute; left: 16px; right: 16px; bottom: 24px; background: var(--ink); color: var(--surface); padding: 12px 16px;
+    border-radius: 12px; font-size: 15px; text-align: center; opacity: 0; transform: translateY(10px); transition: all .2s ease; pointer-events: none; z-index: 5; }
+  #toast.show { opacity: 1; transform: none; }
+
+  /* Facilitator panel */
+  #facilitator { position: fixed; top: 0; right: 0; width: min(420px, 100vw); height: 100%; background: var(--surface); color: var(--ink);
+    border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.15); z-index: 50; display: none; flex-direction: column; font-size: 14px; }
+  #facilitator.open { display: flex; }
+  #facilitator header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  #facilitator header strong { font-size: 15px; }
+  #facilitator .fac-body { overflow-y: auto; padding: 12px 16px; flex: 1; }
+  #facilitator h4 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #facilitator ol { padding-left: 20px; margin: 0; }
+  #facilitator li { margin: 6px 0; }
+  #facilitator .fac-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  #facilitator .fac-actions button { font: 13px var(--font); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+  #log { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); border-radius: 8px; padding: 8px; max-height: 45vh; overflow-y: auto; white-space: pre-wrap; }
+  #fac-note { width: 100%; min-height: 40px; font: 13px var(--font); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="device" role="application" aria-label="Prototype">
+    <div class="proto-banner" id="banner">PROTOTYPE — not a real service. Nothing you enter is saved.</div>
+    <div class="appbar">
+      <button class="icon-btn" id="back" data-back aria-label="Back">‹</button>
+      <h1 id="screen-title">Home</h1>
+      <button class="icon-btn" data-todo="Menu" aria-label="Menu">☰</button>
+    </div>
+    <main id="screens">
+
+      <!-- ===== SCREENS: replace these ===== -->
+      <section data-screen="home" data-title="Home">
+        <h2>Screen title</h2>
+        <p class="muted">Replace these example screens with your own.</p>
+        <button class="btn" data-go="next">Primary action</button>
+        <button class="btn secondary" data-todo="Secondary action">Secondary action</button>
+      </section>
+
+      <section data-screen="next" data-title="Next step">
+        <h2>Choose an option</h2>
+        <div class="options">
+          <label class="option"><input type="radio" name="choice" value="a" data-bind="choice"> <span><strong>Option A</strong><br><span class="muted small">Description</span></span></label>
+          <label class="option"><input type="radio" name="choice" value="b" data-bind="choice"> <span><strong>Option B</strong><br><span class="muted small">Description</span></span></label>
+        </div>
+        <button class="btn" data-go="done">Continue</button>
+      </section>
+
+      <section data-screen="done" data-title="Done">
+        <div class="hero-emoji">✅</div>
+        <h2>Task complete</h2>
+        <p>You chose: <strong data-show="choice">—</strong></p>
+        <button class="btn secondary" data-go="home">Back to start</button>
+      </section>
+      <!-- ===== END SCREENS ===== -->
+
+    </main>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<aside id="facilitator" aria-label="Facilitator panel">
+  <header><strong>Facilitator</strong><button class="icon-btn" id="fac-close" aria-label="Close">✕</button></header>
+  <div class="fac-body">
+    <h4>Session</h4>
+    <input type="text" id="fac-session" placeholder="Participant ID, e.g. P03">
+    <h4>Tasks</h4>
+    <ol id="fac-tasks"></ol>
+    <h4>Note (added to log)</h4>
+    <textarea id="fac-note" placeholder="Type a note and press Add"></textarea>
+    <div class="fac-actions">
+      <button id="fac-add-note">Add note</button>
+      <button id="fac-download">Download log</button>
+      <button id="fac-copy">Copy log</button>
+      <button id="fac-reset">Reset prototype</button>
+      <button id="fac-banner">Toggle banner</button>
+    </div>
+    <h4>Log</h4>
+    <div id="log"></div>
+  </div>
+</aside>
+
+<script>
+/* ===== Configure: tasks shown in the facilitator panel ===== */
+const TASKS = [
+  "Task 1 — written as a scenario, e.g. 'You need X by Saturday. See if you can sort that out.'",
+  "Task 2 — ..."
+];
+
+/* ===== Configure: custom actions for data-action="name" ===== */
+const ACTIONS = {
+  // example: pick(el) { state.item = el.dataset.item; go("item"); }
+};
+
+/* ===== Prototype engine — usually no need to edit below ===== */
+const state = {};
+const log = [];
+const t0 = Date.now();
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const screens = $$("section[data-screen]");
+const START = screens[0].dataset.screen;
+let stack = [];
+let current = null;
+
+function record(type, detail) {
+  const entry = { t: ((Date.now() - t0) / 1000).toFixed(1), screen: current, type, detail: detail || "" };
+  log.push(entry);
+  const line = document.createElement("div");
+  line.textContent = `${entry.t}s  [${entry.screen}]  ${type}${entry.detail ? " — " + entry.detail : ""}`;
+  $("#log").appendChild(line);
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+function render() {
+  $$("[data-show]").forEach((el) => {
+    const v = state[el.dataset.show];
+    el.textContent = v === undefined || v === "" ? (el.dataset.empty || "—") : v;
+  });
+}
+
+function go(name, { push = true } = {}) {
+  const target = screens.find((s) => s.dataset.screen === name);
+  if (!target) { toast(`Screen "${name}" isn't built yet`); record("missing-screen", name); return; }
+  if (push && current) stack.push(current);
+  screens.forEach((s) => s.classList.toggle("active", s === target));
+  current = name;
+  $("#screen-title").textContent = target.dataset.title || "";
+  $("#back").disabled = stack.length === 0;
+  $("#screens").scrollTop = 0;
+  render();
+  record("view", name);
+  const h = target.querySelector("h2, h1, [autofocus]");
+  if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); }
+}
+
+function back() { if (stack.length) { const prev = stack.pop(); record("back", prev); go(prev, { push: false }); } }
+
+let toastTimer;
+function toast(msg) {
+  const el = $("#toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function labelOf(el) {
+  const t = el.getAttribute("aria-label") || el.dataset.label || el.querySelector(".title")?.textContent || el.innerText || el.textContent || "";
+  return t.trim().split("\n")[0].replace(/\s+/g, " ").slice(0, 60);
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#facilitator")) return;
+  const el = e.target.closest("[data-go],[data-back],[data-todo],[data-action],button,a");
+  if (!el) return;
+  if (el.tagName === "A") e.preventDefault();
+  if (el.hasAttribute("data-todo")) { record("not-built", el.dataset.todo); toast(`"${el.dataset.todo}" isn't part of this prototype`); return; }
+  if (el.dataset.action) {
+    record("action", `${el.dataset.action}: ${labelOf(el)}`);
+    const fn = ACTIONS[el.dataset.action];
+    if (fn) fn(el, e); else toast(`Action "${el.dataset.action}" isn't wired up`);
+    return;
+  }
+  if (el.hasAttribute("data-back")) { back(); return; }
+  if (el.dataset.go) { record("tap", labelOf(el)); go(el.dataset.go); return; }
+});
+
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.closest("#facilitator")) return;
+  if (el.dataset.bind) {
+    state[el.dataset.bind] = el.type === "checkbox" ? el.checked : el.value;
+    // Free-text fields are logged as "filled", never their contents, in case a tester types real details
+    const freeText = el.tagName === "TEXTAREA" || ["text", "email", "tel", "number", "search"].includes(el.type);
+    if (freeText) record("fill", `${el.dataset.bind} ${el.value.trim() ? "filled" : "cleared"}`);
+    else record("choose", `${el.dataset.bind} = ${el.type === "checkbox" ? el.checked : (el.dataset.label || el.value)}`);
+    render();
+  }
+});
+
+/* Facilitator panel */
+const fac = $("#facilitator");
+function toggleFac(open) { fac.classList.toggle("open", open ?? !fac.classList.contains("open")); }
+$("#fac-tasks").innerHTML = TASKS.map((t) => `<li>${t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]))}</li>`).join("");
+document.addEventListener("keydown", (e) => {
+  if (e.key === "?" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) toggleFac();
+  if (e.key === "Escape") toggleFac(false);
+});
+let bannerTaps = 0, bannerTimer;
+$("#banner").addEventListener("click", () => {
+  bannerTaps++; clearTimeout(bannerTimer); bannerTimer = setTimeout(() => (bannerTaps = 0), 600);
+  if (bannerTaps >= 3) { bannerTaps = 0; toggleFac(true); }
+});
+$("#fac-close").onclick = () => toggleFac(false);
+$("#fac-add-note").onclick = () => { const n = $("#fac-note").value.trim(); if (n) { record("note", n); $("#fac-note").value = ""; } };
+$("#fac-session").onchange = (e) => record("session", e.target.value);
+$("#fac-banner").onclick = () => { const b = $("#banner"); b.hidden = !b.hidden; };
+$("#fac-reset").onclick = () => {
+  Object.keys(state).forEach((k) => delete state[k]);
+  $$("input, select, textarea", $("#screens")).forEach((i) => { if (i.type === "radio" || i.type === "checkbox") i.checked = false; else i.value = ""; });
+  stack = []; record("reset"); go(START, { push: false });
+};
+const asText = () => log.map((l) => `${l.t}\t${l.screen}\t${l.type}\t${l.detail}`).join("\n");
+$("#fac-copy").onclick = async () => {
+  try { await navigator.clipboard.writeText("t_seconds\tscreen\ttype\tdetail\n" + asText()); toast("Log copied"); }
+  catch { toast("Copy failed — use Download"); }
+};
+$("#fac-download").onclick = () => {
+  const id = ($("#fac-session").value || "session").replace(/[^\w-]/g, "_");
+  const blob = new Blob([JSON.stringify({ participant: $("#fac-session").value, started: new Date(t0).toISOString(), log }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `prototype-log-${id}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+if (location.hash === "#facilitator") toggleFac(true);
+go(START, { push: false });
+</script>
+</body>
+</html>
